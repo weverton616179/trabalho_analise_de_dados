@@ -11,6 +11,7 @@ from sklearn.decomposition import PCA
 import pandas as pd
 from sklearn.decomposition import IncrementalPCA
 import duckdb
+import polars as pl
 
 AA = "ACDEFGHIKLMNPQRSTVWY"
 
@@ -121,32 +122,7 @@ def dividir_lista(lista, n):
     k, m = divmod(tamanho, n)
     return [lista[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(n)]
 
-
-# def processar_bloco(index, registros, skip, nprt, todos_kmers, kmer_index):
-#     print(f"🔄 Iniciando processamento do bloco {index + 1}")
-#     arquivo = f"k{index + 1}.csv"
-#     i = 0
-#     g = 0
-#     with open(arquivo, "w", newline='') as f:
-#         writer = csv.writer(f, delimiter=';')
-#         writer.writerow(["sequencia"] + todos_kmers)
-#         for reg in registros:
-#             i += 1
-#             g += 1
-#             if g == 50:
-#                 g = 0
-#                 print(f"Bloco {index + 1} - Sequência {i}")
-                
-#             vetor = np.zeros(len(todos_kmers), dtype=np.uint8)
-#             for k in set(kmer_2x2_skip(reg.seq, skip, nprt)):
-#                 idx = kmer_index.get(k)
-#                 if idx is not None:
-#                     vetor[idx] = 1
-            
-#             writer.writerow([reg.id] + vetor.tolist())
-#         return arquivo
-
-def processar_bloco(index, registros, skip, nprt, todos_kmers, kmer_index, chunk_size=3000):
+def processar_bloco(index, registros, skip, nprt, todos_kmers, kmer_index, chunk_size=10000):
     print(f"🔄 Iniciando processamento do bloco {index + 1}")
 
     arquivo = f"k{index + 1}.parquet"
@@ -214,31 +190,15 @@ def processar_bloco(index, registros, skip, nprt, todos_kmers, kmer_index, chunk
     writer.close()
     return arquivo
 
-def unificar_arquivos(arquivos, output):
-    dfs = []
-    print("🔗 Unificando arquivos CSV...")
-    for arquivo in arquivos:
-        dfs.append(pd.read_csv(arquivo))
+def unir_parquets(arquivos, saida):
+    print("unificando arquivos ", arquivos)
+    lf = pl.concat(
+        [pl.scan_parquet(a) for a in arquivos],
+        how="vertical",
+        rechunk=False
+    )
 
-    df_final = pd.concat(dfs, ignore_index=True)
-    df_final.to_csv(output, index=False)
-
-def unir_parquets(arquivos, arquivo_saida):
-    tables = []
-    print("Iniciando uniao tabelas...")
-    for arq in arquivos:
-        print(f"Lendo metadados de: {arq}")
-        # Lê sem carregar tudo — apenas os row groups (muito rápido)
-        pq_file = pq.ParquetFile(arq)
-        tables.append(pq_file.read())  # Apenas 4.000 linhas = rápido
-
-    print("Concatenando tabelas...")
-    final_table = pa.concat_tables(tables, promote=True)
-
-    print("Salvando parquet final...")
-    pq.write_table(final_table, arquivo_saida, compression="zstd")
-
-    print("Pronto:", arquivo_saida)
+    lf.sink_parquet(saida, compression="zstd")
 
 def extrair_kmers_binario_parallel(fasta_path, skip, nprt, saida_csv, n_processos, range_pca):
     todos_kmers = gerar_kmers_possiveis(skip, nprt)
@@ -290,7 +250,7 @@ def extrair_kmers_binario_parallel(fasta_path, skip, nprt, saida_csv, n_processo
 
 # === Exemplo de uso ===
 if __name__ == "__main__":
-    caminho = "proteinas.txt"
+    caminho = "teste.fa"
     skip = 1
     nprt = 2
     range_pca = 50
