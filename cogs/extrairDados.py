@@ -78,7 +78,8 @@ def processar_bloco(index, registros, skip, nprt, todos_kmers, kmer_index, chunk
             if idx is not None:
                 vetor[idx] = 1
                 
-        buffer_ids.append(reg.id)
+        parts = reg.description.split()
+        buffer_ids.append(parts[1])
         buffer_matrizes.append(vetor)
         
         if len(buffer_ids) >= chunk_size:
@@ -106,7 +107,7 @@ def unir_parquets(arquivos, saida):
 def extrair_dados(fasta_path, skip, nprt, saida_csv, n_processos):
     todos_kmers = gerar_kmers_possiveis(skip, nprt)
     kmer_index = {k: i for i, k in enumerate(todos_kmers)}
-    print(kmer_index)
+    print(f"{len(kmer_index)} combinações possíveis")
 
     registros = list(SeqIO.parse(fasta_path, "fasta"))
     blocos = dividir_lista(registros, n_processos)
